@@ -14,6 +14,16 @@ def register(parsedList):
     clientSocket.sendto(parsedList.encode(), (serverIP, serverSocket))
 
 
+def deRegister(cmd):
+    print("Going to deregister")
+    clientSocket.sendto(cmd.encode(), (serverIP, int(serverSocket)))
+
+def showData():
+    clientSocket.sendto("dic".encode(), (serverIP, int(serverSocket)))
+
+def dhtSetup(cmd):
+    clientSocket.sendto(cmd.encode(), (serverIP, int(serverSocket)))
+
 wait = False
 while True:
     while wait:
@@ -34,6 +44,13 @@ while True:
         print("Boutta go to register")
         register(command)
         wait = True
+    elif parsed[0] == "deregister":
+        print("de")
+        deRegister(command)
+    elif parsed[0] == "setup-dht":
+        dhtSetup()
+    elif parsed[0] == "dic":
+        showData(command)
     elif command == "exit":
         break
     #print("Doing something")
