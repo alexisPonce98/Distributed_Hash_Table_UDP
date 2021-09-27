@@ -55,7 +55,7 @@ def dhtSetup(parsedlist, clientADDR):
                         arraryToADD.append(key)
                         arraryToADD.append(userDict[key][0])
                         arraryToADD.append(userDict[key][1])
-                        userDict[key][2] = 1
+                        userDict[key][2] = 2
                         dhtList[0] = arraryToADD
                         numberOFUsers += 2
                         print("Just sent: ")

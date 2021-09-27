@@ -1,4 +1,4 @@
-import socket, json, threading, sys
+import socket, json, threading, sys, csv
 
 processName:str
 clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -90,11 +90,23 @@ def recieveMessage():
                     dhtToSend[key] = val
             if edge == False:
                 sendToNeighbor(dhtToSend)
+        elif "query":
+            print("Starting query")
         print("\n")
         print("Got a message")
         print(decodedMessage)
         print("My ID is: ")
         print(myID)
+
+def setupLocalTable():
+    print("setting up locat table")
+
+def setupLeaderTable():
+    print("Leader setting up table")
+    file = open("StatsCountry.csv")
+    csvReader = csv.reader(file)
+    header = next(csvReader)
+    
 
 def dhtResponse():
     global inDHTTable, myID
@@ -119,6 +131,7 @@ def dhtResponse():
     print("Sending: ")
     print(dicTOSend)
     sendToNeighbor(dicTOSend)
+    setupLeaderTable
     print("My ID is: ")
     print(myID)
 
