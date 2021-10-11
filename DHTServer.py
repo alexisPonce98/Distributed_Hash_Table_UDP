@@ -1,12 +1,13 @@
 from os import name
 import socket
-import json
+import json, sys
 #need to figure out this part
-
+#port 43006
 clientName:str
 state:int# 0 = free, 1 = inDHT, 2 = Leader
 userDict = {}
 dht_setup = False
+DHTLeader:str
 serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock = input("What is the socket: ")
 serverSocket.bind(('', int(sock)))
@@ -31,6 +32,25 @@ def deRegister(name):
     userDict.pop(name)
     print(userDict)
 
+
+def wait_for_DHT_Complete():
+    global DHTLeader
+    waiting = True
+    while waiting:
+        msg, addr = serverSocket.recvfrom(2048)
+        decodeMSG = msg.decode()
+        parsedMSG = decodeMSG.split( )
+        print(parsedMessage)
+        if parsedMSG[1] == DHTLeader:
+            print("DHT complete from the leader")
+            serverSocket.sendto("SUCCESS".encode(), (addr))
+            waiting = False
+        else:
+            print("DHT complete sent by someone who is no the leader")
+            serverSocket.sendto("FAILURE".encode(), (addr))
+
+
+
 #sets up the DHT ring
 def dhtSetup(parsedlist, clientADDR):
     print("Setting up the DHT")
@@ -49,9 +69,11 @@ def dhtSetup(parsedlist, clientADDR):
             for (key,val) in userDict.items():
                 if numberOFUsers <= N:
                     if user == key:
+                        global DHTLeader
                         #append the users ip and ports
                         print("appending users ip and ports")
                         arraryToADD = []
+                        DHTLeader = key
                         arraryToADD.append(key)
                         arraryToADD.append(userDict[key][0])
                         arraryToADD.append(userDict[key][1])
@@ -59,12 +81,13 @@ def dhtSetup(parsedlist, clientADDR):
                         dhtList[0] = arraryToADD
                         numberOFUsers += 2
                         print("Just sent: ")
+                        print(userDict)
                         print(arraryToADD)
                     else:
                         print("if the list does not already have n amount add more users")
                         #if the list does not already have n amount add more users
                         arraryToADD = []
-                        arraryToADD(key)
+                        arraryToADD.append(key)
                         arraryToADD.append(userDict[key][0])
                         arraryToADD.append(userDict[key][1])
                         userDict[key][2] = 1
@@ -82,6 +105,7 @@ def dhtSetup(parsedlist, clientADDR):
             print("about to send the dhtList")
             print(dhtList)
             dht_setup = True
+            wait_for_DHT_Complete()
             #serverSocket.sendto(dhtList.encode(), (clientADDR))   
         else:
             print("user not in table")  

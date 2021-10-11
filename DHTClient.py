@@ -1,3 +1,4 @@
+from os import read
 import socket, json, threading, sys, csv
 
 processName:str
@@ -80,8 +81,8 @@ def recieveMessage():
                         index = temp[temp.index(key) + 1]
                         if index in clientRingList:
                             next = temp[temp.index(key) +1]
-                            rightIP = clientRingList[next][0]
-                            rightSock = clientRingList[next][1]
+                            rightIP = clientRingList[next][1]
+                            rightSock = clientRingList[next][2]
                         justStarted = False
                     except:
                         print("at the edge of ring")
@@ -102,10 +103,23 @@ def setupLocalTable():
     print("setting up locat table")
 
 def setupLeaderTable():
+    dataList = []
     print("Leader setting up table")
     file = open("StatsCountry.csv")
     csvReader = csv.reader(file)
-    header = next(csvReader)
+    with open("StatsCountry.csv", encoding='utf-8', errors='ignore') as f:
+        reader = csv.reader(f)
+        fields = next(reader)
+        for row in reader:
+            dataList.append(row)
+        longNames = []
+        for (key,val) in dataList:
+            for (key,val) in val:
+                if key == 3:
+                    longNames.append(val)
+        print("This is the fields")
+        print(fields)
+   
     
 
 def dhtResponse():
@@ -124,19 +138,31 @@ def dhtResponse():
             global rightSock
             temp = list(inDHTTable)
             next = temp[temp.index(key) +1]
-            rightIP = inDHTTable[next][0]
-            rightSock = int(inDHTTable[next][1])
+            rightIP = inDHTTable[next][1]
+            rightSock = int(inDHTTable[next][2])
         else:
             dicTOSend[key] = val
     print("Sending: ")
     print(dicTOSend)
     sendToNeighbor(dicTOSend)
-    setupLeaderTable
+    setupLeaderTable()
     print("My ID is: ")
     print(myID)
+    sendMessage()
 
     
-
+def dht_complete_response():
+    print("Waiting")
+    waiting = True
+    while waiting:
+        msg, addr = clientSocket.recvfrom(2048)
+        decodedMSG = msg.decode()
+        if decodedMSG == "SUCCESS":
+            print("SUCCESS")
+        else:
+            print("FAILURE")
+        waiting = False
+ 
 def sendMessage():
     global serverIP, serverSocket
     sending = True
@@ -177,6 +203,9 @@ def sendMessage():
             clientSocket.sendto(parsed[1].encode(), (serverIP, int(serverSocket)))
         elif command == "exit":
             break
+        elif parsed[0] == "dht-complete":
+            clientSocket.sendto(command.encode(), (serverIP, int(serverSocket)))
+            dht_complete_response()
         #print("Doing something")
 
 firstPort = input("What is the left port: ")
