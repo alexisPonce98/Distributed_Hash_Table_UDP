@@ -8,6 +8,8 @@ state:int# 0 = free, 1 = inDHT, 2 = Leader
 userDict = {}
 dht_setup = False
 DHTLeader:str
+leaderSocket:int
+leaderIP:str
 serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock = input("What is the socket: ")
 serverSocket.bind(('', int(sock)))
@@ -47,6 +49,7 @@ def wait_for_DHT_Complete():
             waiting = False
         else:
             print("DHT complete sent by someone who is no the leader")
+            print(parsedMSG[1])
             serverSocket.sendto("FAILURE".encode(), (addr))
 
 
@@ -69,14 +72,16 @@ def dhtSetup(parsedlist, clientADDR):
             for (key,val) in userDict.items():
                 if numberOFUsers <= N:
                     if user == key:
-                        global DHTLeader
+                        global DHTLeader, leaderSocket, leaderIP
                         #append the users ip and ports
                         print("appending users ip and ports")
                         arraryToADD = []
                         DHTLeader = key
                         arraryToADD.append(key)
                         arraryToADD.append(userDict[key][0])
+                        leaderIP = userDict[key][0]
                         arraryToADD.append(userDict[key][1])
+                        leaderSocket = userDict[key][1]
                         userDict[key][2] = 2
                         dhtList[0] = arraryToADD
                         numberOFUsers += 2
@@ -115,6 +120,38 @@ def dhtSetup(parsedlist, clientADDR):
         serverSocket.sendto("Not enough clients registered for N".encode(), (clientADDR))
         
 
+def query_dht(msg, clientADDR):
+    print("Recieved a query")
+    requested_user = msg[1]
+    found = False
+    for (key,val) in userDict.items():
+        if key == requested_user:
+            found = True
+            for (key, val ) in val.items():
+                if key == 3:
+                    if val == 0:
+                        #user is free
+                        print("accepting the query")
+                        user_IP = val[0]
+                        user_sock = val[1]
+                        print("recieved query from: ")
+                        print(user_IP)
+                        print(" ")
+                        print(user_sock)
+                        print("Sending to leader")
+                        print(leaderIP)
+                        print(leaderSocket)
+                        data = json.dumps({"QEURY" : [user_IP, user_sock]})
+                        serverSocket.sendto("Query".encode(), (str(leaderIP), int(leaderSocket)))
+                    else:
+                        #user is in the dht or is the elader
+                        print("Requested user is in the dht")
+    if not found:
+        print("Query user is not registered")
+        print("Sending mess back to ")
+        print(clientADDR)
+        serverSocket.sendto("FAILURE".encode(), (clientADDR))
+        
 
 while True:
     message, clientADDR = serverSocket.recvfrom(2048)
@@ -137,5 +174,7 @@ while True:
         if dht_setup == False:
             print("ready to set up dht")
             dhtSetup(parsedMessage, clientADDR)
+    elif parsedMessage[0].lower() == 'query-dht':
+        query_dht(parsedMessage, clientADDR)
     print(decodedMessage)
     serverSocket.sendto("Recieved registration".encode(), clientADDR)
