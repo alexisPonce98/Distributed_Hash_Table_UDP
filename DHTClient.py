@@ -1,12 +1,14 @@
+from json.encoder import py_encode_basestring
 from os import read
 import socket, json, threading, sys, csv
+from typing import Collection
 
-processName:str
 clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 serverIP:int
 serverSocket:int
 amountInDHT = 0
 inDHTTable = {}
+myDHTData = list(range(0, 352))
 leftIP = 0
 rightIP = 0
 leftSock = 0
@@ -16,12 +18,10 @@ listening = False
 sending = False
 portL = 0
 portR = 0
+myName:str
 #register long_name IP port(s)
 def register(parsedList):
     global serverIP, serverSocket
-    print("Registering")
-    processName = parsedList[1]
-    print("This is the second input: " + parsedList[1])
     clientSocket.sendto(parsedList.encode(), (serverIP, serverSocket))
 
 
@@ -38,8 +38,22 @@ def dhtSetup(cmd):
     global serverIP, serverSocket
     clientSocket.sendto(cmd.encode(), (serverIP, int(serverSocket)))
 
+def query_dht(cmd):
+    print("Sending a query to the server")
+    global serverIP, serverSocket
+    clientSocket.sendto(cmd.encode(), (str(serverIP), int(serverSocket)))
+    wait_for_query_response()
+
+# might not need this wait function
+def wait_for_query_response():
+    msg, addr = clientSocket.recvfrom(2048)
+    decodedMSG = msg.decode()
+    parsedMSG = decodedMSG.split()
+    if parsedMSG[0] == 'FAILURE':
+        print("FAILURE")
+
 def dhtSetupResponse():
-    
+
     amountReceived = 0
     while amountReceived != amountInDHT:
         print("checking recieved messages fron setup DHT")
@@ -91,8 +105,30 @@ def recieveMessage():
                     dhtToSend[key] = val
             if edge == False:
                 sendToNeighbor(dhtToSend)
-        elif "query":
+        elif "DATA" in data:
+            print("This is the length of the list: "+ str(len(myDHTData)))
+            print("Got data from left neighbor")
+            recievedData = data["DATA"]
+            print(recievedData)
+            justStarted = True
+            if recievedData[0] == myID:
+                print("This is my data")
+                myDHTData[recievedData[1]] = recievedData[2]
+            else:
+                clientSocket.sendto(message, (str(rightIP), int(rightSock)))
+        elif "QUERY" in data:
             print("Starting query")
+            # recieved a query only for the leader
+            recievedData = data["QUERY"]
+            user_IP = recievedData[0]
+            user_sock = recievedData[1]
+        elif "QUERY-leader":
+            # recieved a connection confirmation from the leader
+            print("What data would you like to qeury? ")
+        elif "QUERY-Look":
+            # begining to look for the data
+            print("checking if i have the data")
+           
         print("\n")
         print("Got a message")
         print(decodedMessage)
@@ -103,6 +139,7 @@ def setupLocalTable():
     print("setting up locat table")
 
 def setupLeaderTable():
+    global myName
     dataList = []
     print("Leader setting up table")
     file = open("StatsCountry.csv")
@@ -113,12 +150,38 @@ def setupLeaderTable():
         for row in reader:
             dataList.append(row)
         longNames = []
-        for (key,val) in dataList:
-            for (key,val) in val:
+        ascii_values = []
+        for (key,val) in enumerate(dataList):
+            data_val = val
+            for (key,val) in enumerate(val):
                 if key == 3:
+                    sum_of_word = 0
+                    for letter in val:
+                        sum_of_word += ord(letter)
+                    pos = sum_of_word % 353
+                    print("This is the pos")
+                    print(pos)
+                    print("This is the amount in dht")
+                    print(amountInDHT)
+                    id = pos % amountInDHT
+                    if id != myID:
+                        print("Going to sends data to next dht")
+                        arrary_being_sent_to_neighbor = [id, pos, data_val]
+                        sentJson = json.dumps({"DATA" : arrary_being_sent_to_neighbor})
+                        clientSocket.sendto(sentJson.encode(), (str(rightIP), int(rightSock)))
+                    else:
+                        print("This is my data")
+                        myDHTData[pos] = data_val
+                    ascii_values.append(sum_of_word)
                     longNames.append(val)
-        print("This is the fields")
-        print(fields)
+        print("This is my dht table")
+        print(myDHTData)
+        print("This is my name")
+        print(myName)
+        dht_complete_message = "dht-complete " + str(myName)
+        clientSocket.sendto(dht_complete_message.encode(), (str(serverIP), int(serverSocket)))
+
+
    
     
 
@@ -164,7 +227,7 @@ def dht_complete_response():
         waiting = False
  
 def sendMessage():
-    global serverIP, serverSocket
+    global serverIP, serverSocket, amountInDHT
     sending = True
     wait = False
     while True:
@@ -185,7 +248,9 @@ def sendMessage():
         print(parsed)
 
         if parsed[0] == "register":
+            global myName
             print("Boutta go to register")
+            myName = parsed[1]
             register(command)
             wait = True
         elif parsed[0] == "deregister":
@@ -194,11 +259,14 @@ def sendMessage():
         elif parsed[0] == "setup-dht":
             print("Sending dht setup message")
             amountInDHT = int(parsed[1])
+            print("This is the amount in dht" +  str(amountInDHT))
             dhtSetup(command)
             #dhtSetupResponse()
             dhtResponse()
         elif parsed[0] == "dic":
             showData()
+        elif parsed[0] == 'query-dht':
+            query_dht(command)
         elif parsed[0] == "send":
             clientSocket.sendto(parsed[1].encode(), (serverIP, int(serverSocket)))
         elif command == "exit":
