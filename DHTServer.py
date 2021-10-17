@@ -1,6 +1,7 @@
 from os import name
 import socket
 import json, sys
+
 #need to figure out this part
 #port 43006
 clientName:str
@@ -14,6 +15,7 @@ serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock = input("What is the socket: ")
 serverSocket.bind(('', int(sock)))
 registered_users = 0
+requested_leave_user:str
 print("Dictionary already has: ")
 print(userDict)
 
@@ -141,7 +143,46 @@ def dhtSetup(parsedlist, clientADDR):
     else:
         print("not enough in the dict to create dht")
         serverSocket.sendto("Not enough clients registered for N".encode(), (clientADDR))
-        
+
+def leave_dht(user):
+    global requested_leave_user
+    print("passed the user")
+    user_found = False
+    user_ip:str
+    user_sock:int
+    for (key,val) in userDict.items():
+        print("looking for user")
+        print("compareing key  " + str(key) + " with " + user)
+        if key == user:
+            print("Found user")
+            user_val = val
+            for (key,val) in enumerate(val):
+                if key == 2:
+                    if val != 0:
+                        user_found = True
+                        print("User in dht")
+                        requested_leave_user = user_val
+                        user_ip = user_val[0]
+                        user_sock = user_val[1]
+                    else:
+                        print("User not in dht")
+                        data = json.dumps({"leave" : ["FAILURE"]})
+                        serverSocket.sendto(data.encode, (str(user_val[0]), int(user_val[1])))
+        elif user_found:
+            user_found = False
+            users_right_neighbor = val
+            data = json.dumps({"leave" : ["SUCCESS", users_right_neighbor]})
+            serverSocket.sendto(data.encode(), (str(user_ip), int(user_sock)))
+            wait_for_leave_response
+
+                    
+         
+
+def wait_for_leave_response():
+    print("Waiting for a response")
+    msg, addr = serverSocket.recvfrom(2048)
+    decodedMessage = msg.decode()
+
 
 def query_dht(msg, clientADDR):
     global leaderIP, leaderSocket
@@ -205,5 +246,9 @@ while True:
             dhtSetup(parsedMessage, clientADDR)
     elif parsedMessage[0].lower() == 'query-dht':
         query_dht(parsedMessage, clientADDR)
+    elif parsedMessage[0].lower() == 'leave-dht':
+        user = parsedMessage[1].lower()
+        print("Starting leave")
+        leave_dht(user)
     print(decodedMessage)
     serverSocket.sendto("Recieved registration".encode(), clientADDR)

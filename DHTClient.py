@@ -1,3 +1,4 @@
+from ast import parse
 import enum
 from json.encoder import py_encode_basestring
 from os import read
@@ -22,6 +23,8 @@ portL = 0
 portR = 0
 myName:str
 waiting_for_Query = False
+started__teardown = False
+leader = False
 #register long_name IP port(s)
 def register(parsedList):
     global serverIP, serverSocket
@@ -71,9 +74,9 @@ def dhtSetupResponse():
         amountReceived += 1
 
 
-def sendToNeighbor(dicToSend):
+def sendToNeighbor(dicToSend, leader_ip, leader_sock):
     global rightIP, rightSock
-    data = json.dumps({"Left" : dicToSend})
+    data = json.dumps({"Left" : [dicToSend, leader_ip, leader_sock]})
     print("Sending to ")
     print(rightIP)
     print(rightSock)
@@ -81,7 +84,7 @@ def sendToNeighbor(dicToSend):
 
 def recieveMessage():
     print("Started listening")
-    global listening, portL, myID, waiting_for_Query, amountInDHT
+    global listening, portL, myID, waiting_for_Query, amountInDHT, myDHTData, leader
     print("Real amount " + str(amountInDHT))
     listening = True
     while True:
@@ -98,7 +101,10 @@ def recieveMessage():
             print("YUP its here")
         edge = False
         if "Left" in data:
-            clientRingList = data["Left"]
+            real_data = data["Left"]
+            leader_ip = real_data[1]
+            leader_sock = real_data[2]
+            clientRingList = real_data[0]
             print(clientRingList)
             justStarted = True
             dhtToSend = {}
@@ -115,14 +121,15 @@ def recieveMessage():
                             rightSock = clientRingList[next][2]
                         justStarted = False
                     except:
+                        rightIP = leader_ip
+                        rightSock = leader_sock
                         print("at the edge of ring")
                         edge = True
                 else:
                     dhtToSend[key] = val
             if edge == False:
-                sendToNeighbor(dhtToSend)
+                sendToNeighbor(dhtToSend, leader_ip, leader_sock)
         elif "DATA" in data:
-            print("This is the length of the list: "+ str(len(myDHTData)))
             print("Got data from left neighbor")
             recievedData = data["DATA"]
             #print(recievedData)
@@ -222,6 +229,42 @@ def recieveMessage():
         elif "deregister" in data:
             recievedData = data["deregister"]
             print(recievedData)
+        elif "leave" in data:
+            recievedData = data["leave"]
+            if recievedData[0] == 'SUCCESS':
+                print("SUCCESS")
+                right_neighbor = recievedData[1]
+                print(right_neighbor)
+                teardown()
+            elif recievedData[0] == "FAILURE":
+                print("FAILURE")
+        elif "teardown" in data:
+            print("recieved teardown")
+            if started__teardown:
+                print("Got back the teardown instruction")
+                myDHTData = {}
+                reset_id()
+            else:
+                print("deleting my dht info")
+                myDHTData = {}
+                data = json.dumps({"teardown": "teardown"})
+                clientSocket.sendto(data.encode(), (str(rightIP), int(rightSock)))
+        elif "reset" in data:
+            print("recieved id reset command")
+            recievedData = data["reset"]
+            if recievedData[1] == "leader":
+                myID = recievedData[0]
+                amountInDHT = recievedData[2]
+                data = json.dumps({"reset" : [myID, "not", amountInDHT]})
+                clientSocket.sendto(data.encode(), (str(rightIP), int(rightSock)))
+            else:
+                if not leader:
+                    print("recieved id " + str(recievedData[0]))
+                    myID = recievedData[0] + 1
+                    amountInDHT = recievedData[2]
+                    data = json.dumps({"reset" : [myID, "not"]})
+                    clientSocket.sendto(data.encode(), (str(rightIP), int(rightSock)))
+
         
        # print("\n")
        # print("Got a message")
@@ -229,10 +272,29 @@ def recieveMessage():
        # print("My ID is: ")
        # print(myID)
 
+
+def leave_dht(command):
+    print("Getting things set up to leave the dht")
+    clientSocket.sendto(command.encode(), (str(serverIP), int(serverSocket)))
+
+def teardown():
+    global started__teardown
+    global started_teardown
+    print("Starting the teardown")
+    data = json.dumps({"teardown" : "teardown"})
+    started__teardown = True
+    clientSocket.sendto(data.encode(), (str(rightIP), int(rightSock)))
+    
+def reset_id():
+    print("resetting ID")
+    newAmount = amountInDHT - 1
+    data = json.dumps({"reset": [0, "leader", newAmount]})
+    clientSocket.sendto(data.encode(), (str(rightIP),int(rightSock)))
+
 def setupLocalTable():
     print("setting up locat table")
 
-def setupLeaderTable():
+def setupLeaderTable(leader_ip, leader_sock):
     global myName
     dataList = []
     print("Leader setting up table")
@@ -260,7 +322,7 @@ def setupLeaderTable():
                     id = pos % amountInDHT
                     if id != myID:
                         print("Going to sends data to next dht")
-                        arrary_being_sent_to_neighbor = [id, pos, data_val]
+                        arrary_being_sent_to_neighbor = [id, pos, data_val, leader_ip, leader_sock]
                         sentJson = json.dumps({"DATA" : arrary_being_sent_to_neighbor})
                         clientSocket.sendto(sentJson.encode(), (str(rightIP), int(rightSock)))
                     else:
@@ -282,7 +344,7 @@ def setupLeaderTable():
     
 
 def dhtResponse():
-    global inDHTTable, myID
+    global inDHTTable, myID, leader
     message, ADDR = clientSocket.recvfrom(2048)
     decodedMSG = message.decode()
     print(decodedMSG)
@@ -293,20 +355,25 @@ def dhtResponse():
     inDHTTable = passedDHT
     print(inDHTTable)
     dicTOSend = {}
+    leader_ip:str
+    leader_sock:int
     for (key,val) in inDHTTable.items():
         if key == "0":
             global rightIP
             global rightSock
+            leader_ip = inDHTTable[key][1]
+            leader_sock = inDHTTable[key][2]
             temp = list(inDHTTable)
             next = temp[temp.index(key) +1]
             rightIP = inDHTTable[next][1]
             rightSock = int(inDHTTable[next][2])
+            leader = True
         else:
             dicTOSend[key] = val
     print("Sending: ")
     print(dicTOSend)
-    sendToNeighbor(dicTOSend)
-    setupLeaderTable()
+    sendToNeighbor(dicTOSend, leader_ip, leader_sock)
+    setupLeaderTable(leader_ip, leader_sock)
     print("My ID is: ")
     print(myID)
     sendMessage()
@@ -380,6 +447,12 @@ def sendMessage():
         elif parsed[0] == "dht-complete":
             clientSocket.sendto(command.encode(), (serverIP, int(serverSocket)))
             dht_complete_response()
+        elif parsed[0] == "leave-dht":
+            leave_dht(command)
+        elif parsed[0] == "print":
+            print(myDHTData)
+            print("My id is: " + str(myID))
+            print("The amount in dht is: " + str(amountInDHT))
         #print("Doing something")
 
 firstPort = input("What is the left port: ")
