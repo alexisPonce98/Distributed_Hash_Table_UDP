@@ -1,3 +1,5 @@
+from ast import parse
+import enum
 from os import name
 import socket
 import json, sys
@@ -40,9 +42,9 @@ def register(parsedList, clientADDR):
 def deRegister(name):
     data_array = userDict[name]
     if data_array[2] == 0:
-        print("Deregister Success")
+        print("SUCCESS")
         userDict.pop(name)
-        print(userDict)
+        #print(userDict)
         data = json.dumps({"deregister" : "SUCCESS"})
         serverSocket.sendto(data.encode(), (str(data_array[0]), int(data_array[1])))
     else:
@@ -58,63 +60,64 @@ def wait_for_DHT_Complete():
         msg, addr = serverSocket.recvfrom(2048)
         decodeMSG = msg.decode()
         parsedMSG = decodeMSG.split( )
-        print(parsedMessage)
+       # print(parsedMessage)
         if parsedMSG[1] == DHTLeader:
-            print("DHT complete from the leader")
+           # print("DHT complete from the leader")
             serverSocket.sendto("SUCCESS".encode(), (addr))
+            print("SUCCESS")
             waiting = False
         else:
-            print("DHT complete sent by someone who is no the leader")
-            print(parsedMSG[1])
+           # print("DHT complete sent by someone who is no the leader")
+           # print(parsedMSG[1])
             serverSocket.sendto("FAILURE".encode(), (addr))
 
 
 
 #sets up the DHT ring
 def dhtSetup(parsedlist, clientADDR):
-    print("Setting up the DHT")
+   # print("Setting up the DHT")
     N = int(parsedlist[1])
     if N < 2:
         print("N is not greater than 2")
         serverSocket.sendto("N is not greater than 2".encode(), (clientADDR))
         return
     user = parsedlist[2].lower()
-    print("This is the user " + user + "and this is what we looking for " + parsedlist[2].lower())
+   # print("This is the user " + user + "and this is what we looking for " + parsedlist[2].lower())
     if len(userDict) >= N:
         dhtList = {}
         ID = 1
         numberOFUsers = 0
         if user in userDict:
             for (key,val) in userDict.items():
-                print("The number of users is ")
-                print(numberOFUsers)
-                print('N is ')
-                print(N)
+                #print("The number of users is ")
+               # print(numberOFUsers)
+               # print('N is ')
+                #print(N)
                 if registered_users >= N:
                     if numberOFUsers <= N:
                         if user == key:
                             global DHTLeader, leaderSocket, leaderIP
                             #append the users ip and ports
-                            print("appending users ip and ports")
+                            #print("appending users ip and ports")
                             arraryToADD = []
                             DHTLeader = key
                             arraryToADD.append(key)
                             arraryToADD.append(userDict[key][0])
-                            print("This is the userdict[key][0]")
+                            #print("This is the userdict[key][0]")
                             print(userDict[key][0])
                             leaderIP = userDict[key][0]
-                            print("This is what was stored as the leaders IP")
-                            print(leaderIP)
+                            #print("This is what was stored as the leaders IP")
+                            #print(leaderIP)
                             arraryToADD.append(userDict[key][1])
                             leaderSocket = userDict[key][1]
                             userDict[key][2] = 2
                             dhtList[0] = arraryToADD
                             numberOFUsers += 2
-                            print("Just sent: ")
-                            print(userDict)
-                            print(arraryToADD)
+                           # print("Just sent: ")
+                            #print(userDict)
+                            #print(arraryToADD)
                         else:
-                            print("if the list does not already have n amount add more users")
+                           # print("if the list does not already have n amount add more users")
                             #if the list does not already have n amount add more users
                             arraryToADD = []
                             arraryToADD.append(key)
@@ -124,16 +127,16 @@ def dhtSetup(parsedlist, clientADDR):
                             dhtList[ID] = arraryToADD
                             ID += 1
                             numberOFUsers += 1
-                            print("Just sent: ")
-                            print(arraryToADD)
+                           # print("Just sent: ")
+                           # print(arraryToADD)
                 else:
                     print("Number of users not enough for DHT")
                     serverSocket.sendto("Not enought users for DHT".encode(), (clientADDR))
                     return
             data = json.dumps({"Table" : dhtList})
             serverSocket.sendto(data.encode(), (clientADDR))
-            print("about to send the dhtList")
-            print(dhtList)
+           # print("about to send the dhtList")
+           # print(dhtList)
             dht_setup = True
             wait_for_DHT_Complete()
             #serverSocket.sendto(dhtList.encode(), (clientADDR))   
@@ -146,7 +149,7 @@ def dhtSetup(parsedlist, clientADDR):
 
 def leave_dht(user):
     global requested_leave_user
-    print("passed the user")
+   # print("passed the user")
     user_found = False
     user_ip:str
     user_sock:int
@@ -156,37 +159,70 @@ def leave_dht(user):
         if key == user:
             print("Found user")
             user_val = val
+            user_key = key
             for (key,val) in enumerate(val):
                 if key == 2:
                     if val != 0:
                         user_found = True
                         print("User in dht")
-                        requested_leave_user = user_val
+                        requested_leave_user = user_key
                         user_ip = user_val[0]
                         user_sock = user_val[1]
                     else:
                         print("User not in dht")
                         data = json.dumps({"leave" : ["FAILURE"]})
-                        serverSocket.sendto(data.encode, (str(user_val[0]), int(user_val[1])))
+                        serverSocket.sendto(data.encode(), (str(user_val[0]), int(user_val[1])))
         elif user_found:
             user_found = False
             users_right_neighbor = val
             data = json.dumps({"leave" : ["SUCCESS", users_right_neighbor]})
             serverSocket.sendto(data.encode(), (str(user_ip), int(user_sock)))
-            wait_for_leave_response
+            wait_for_leave_response()
+            break
 
                     
          
 
 def wait_for_leave_response():
+    global leaderIP, leaderSocket
     print("Waiting for a response")
     msg, addr = serverSocket.recvfrom(2048)
     decodedMessage = msg.decode()
+    parsed = decodedMessage.split( )
+   # print(parsed)
+   # print(requested_leave_user)
+    if parsed[0] == "dht-rebuilt":
+       # print("Comparing " + str(parsed[1]) + " with " + str(requested_leave_user))
+        response_ip:str
+        response_sock:int
+        if str(parsed[1]) == str(requested_leave_user):
+            for (key,val) in userDict.items():
+                if key == requested_leave_user:
+                    response_ip = val[0]
+                    response_sock = val[1]
+                    val[2] = 0
+                if key == parsed[2]:
+                    leaderIP = val[0]
+                    leaderSocket = val[1]
+                    val[2] = 2
+            data = json.dumps({"rebuilt" : "SUCCESS"})
+            print("SUCCESS")
+            print("Sending message to " + str(response_ip) + " " + str(response_sock))
+            serverSocket.sendto(data.encode(), (str(response_ip), int(response_sock)))
+            print(userDict)
+        else:
+            print("FAILURE not the user that initiated the leave")
+            for (key,val) in userDict.items():
+                if key == parsed[1]:
+                    data = json.dumps({"rebuilt": "FAILURE"})
+                    serverSocket.sendto(data.encode(), (str(val[0]), int(val[1])))
+
+
 
 
 def query_dht(msg, clientADDR):
     global leaderIP, leaderSocket
-    print("Recieved a query")
+   # print("Recieved a query")
     requested_user = msg[1].lower()
     requested_port = msg[2]
     found = False
@@ -199,14 +235,14 @@ def query_dht(msg, clientADDR):
                 print("accepting the query")
                 user_IP = val[0]
                 user_sock = val[1]
-                print("recieved query from: ")
+              #  print("recieved query from: ")
                 print(user_IP)
                 print(user_sock)
-                print("Sending to leader")
+              #  print("Sending to leader")
                 print(clientADDR[0])
                 print(requested_port)
                 msg_header = "START"
-                print("message header " + msg_header)
+               # print("message header " + msg_header)
 
                 data = json.dumps({msg_header : [leaderIP, leaderSocket]})
                 serverSocket.sendto(data.encode(), (str(clientADDR[0]), int(requested_port)))
@@ -217,11 +253,54 @@ def query_dht(msg, clientADDR):
                 serverSocket.sendto(data.encode(), (clientADDR))                  
     if not found:
         print("Query user is not registered")
-        print("Sending mess back to ")
-        print(clientADDR)
+        #print("Sending mess back to ")
+       # print(clientADDR)
         data = json.dumps({'QUERY-START': "FAILURE"})
         serverSocket.sendto(data.encode(), (clientADDR))
-        
+
+def join_dht(user):
+    for (key, val) in userDict.items():
+        #print("Comparing " + str(key) + " " + str(user))
+        if key == user:
+            if val[2] == 0:
+                print("user is registered sending over info")
+               # print("sending to " + str(val[0]) + " " + val[1])
+                data = json.dumps({"join" : [leaderIP, leaderSocket]})
+                serverSocket.sendto(data.encode(), (str(val[0]), int(val[1])))
+
+def teardown_dht(user):
+    print("going to teardown")
+    for (key,val) in userDict.items():
+        if key == user:
+            if val[2] == 2:
+                print("user is the leader")
+                data = json.dumps({'destroy' : "SUCCESS"})
+                serverSocket.sendto(data.encode(), (str(val[0]), int(val[1])))
+                wait_for_teardown()
+                break
+            else:
+                print('user not leader')
+                data = json.dumps({"destroy" : "Failure"})
+                serverSocket.sendto(data.encode(), (str(val[0]), int(val[1])))
+
+
+def wait_for_teardown():
+    msg, addr = serverSocket.recvfrom(2048)
+    decodedMessage = msg.decode()
+    parsedMessage = decodedMessage.split( )
+    if parsedMessage[0] == 'teardown-complete':
+        for (key, val) in userDict.items():
+            if key == parsedMessage[1].lower():
+                if val[2] == 2:
+                    print("user is the leader")
+                    data = json.dumps({'accomplished' : 'SUCCESS'})
+                    serverSocket.sendto(data.encode(), (str(val[0]), int(val[1])))
+                else:
+                    print("user is not the leader")
+                    data = json.dumps({'accomplished' : 'FAILURE'})
+                    serverSocket.sendto(data.encode(), (str(val[0]), str(val[1])))
+
+
 
 while True:
     message, clientADDR = serverSocket.recvfrom(2048)
@@ -239,7 +318,7 @@ while True:
         userName = parsedMessage[1].lower()
         deRegister(userName)
     elif parsedMessage[0].lower() == "dic":
-        print(userDict)
+       print(userDict)
     elif parsedMessage[0].lower() == "setup-dht":
         if dht_setup == False:
             print("ready to set up dht")
@@ -250,5 +329,11 @@ while True:
         user = parsedMessage[1].lower()
         print("Starting leave")
         leave_dht(user)
-    print(decodedMessage)
+    elif parsedMessage[0].lower() == "join-dht":
+        user = parsedMessage[1].lower()
+        join_dht(user)
+    elif parsedMessage[0].lower() == 'teardown-dht':
+        user = parsedMessage[1].lower()
+        teardown_dht(user)
+    #print(decodedMessage)
     serverSocket.sendto("Recieved registration".encode(), clientADDR)
